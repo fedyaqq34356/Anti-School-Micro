@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Cam Crush",
+  "version": "1.0",
+  "description": "Тумблер: камера в Google Meet становится максимально плохой",
+  "permissions": ["storage"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Cam Crush" },
+  "commands": {
+    "toggle": {
+      "suggested_key": { "default": "Ctrl+Shift+9" },
+      "description": "Включить/выключить",
+      "global": true
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://meet.google.com/*"],
+      "js": ["crush.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": true
+    },
+    {
+      "matches": ["https://meet.google.com/*"],
+      "js": ["bridge.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ]
+}

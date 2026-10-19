@@ -1,3 +1,6 @@
 __pycache__/
 *.pyc
 .venv/
+linux/profile
+windows/profile.json
+camera/profile.json

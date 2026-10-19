@@ -1,9 +1,13 @@
 (() => {
-  const CFG = {
+  let CFG = {
     width: 32,
     height: 18,
     quality: 0.4,
     blur: 12,
+    smooth: true,
+    brightness: 1,
+    saturate: 1,
+    contrast: 1,
     fps: 3,
     freezeChance: 0.06,
     freezeMs: [700, 3000],
@@ -11,7 +15,9 @@
 
   let on = false;
   window.addEventListener("message", (e) => {
-    if (e.source === window && e.data && typeof e.data.camCrush === "boolean") on = e.data.camCrush;
+    if (e.source !== window || !e.data || typeof e.data.camCrush !== "boolean") return;
+    on = e.data.camCrush;
+    if (e.data.cfg) CFG = { ...CFG, ...e.data.cfg };
   });
 
   const md = navigator.mediaDevices;
@@ -38,6 +44,10 @@
           }
 
           const { timestamp, displayWidth: w, displayHeight: h } = frame;
+          if (small.width !== CFG.width || small.height !== CFG.height) {
+            small.width = CFG.width;
+            small.height = CFG.height;
+          }
           sctx.drawImage(frame, 0, 0, CFG.width, CFG.height);
           frame.close();
           const bmp = await createImageBitmap(await small.convertToBlob({ type: "image/jpeg", quality: CFG.quality }));
@@ -45,8 +55,9 @@
             big.width = w;
             big.height = h;
           }
+          bctx.imageSmoothingEnabled = CFG.smooth;
           bctx.imageSmoothingQuality = "high";
-          bctx.filter = `blur(${CFG.blur * w / 640}px)`;
+          bctx.filter = `blur(${CFG.blur * w / 640}px) brightness(${CFG.brightness}) saturate(${CFG.saturate}) contrast(${CFG.contrast})`;
           bctx.drawImage(bmp, -w * 0.05, -h * 0.05, w * 1.1, h * 1.1);
           bmp.close();
           ctrl.enqueue(new VideoFrame(big, { timestamp }));

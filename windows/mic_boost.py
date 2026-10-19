@@ -1,7 +1,10 @@
 import argparse
+import json
 import math
+import random
 import sys
 import threading
+from pathlib import Path
 
 import numpy as np
 import sounddevice as sd
@@ -11,6 +14,28 @@ RATE = 48000
 BLOCK = 480
 HOTKEY = "ctrl+windows+m"
 CABLE = "CABLE Input"
+PROFILE = Path(__file__).with_name("profile.json")
+
+
+def load_profile():
+    try:
+        return json.loads(PROFILE.read_text())
+    except (OSError, ValueError):
+        pass
+    r = random.uniform
+    profile = {
+        "pre": round(r(150, 500), 1),
+        "drive": round(r(1.5, 3), 2),
+        "bass_freq": round(r(110, 320), 1),
+        "bass_gain": round(r(6, 18), 1),
+        "harsh_freq": round(r(1500, 4800), 1),
+        "harsh_gain": round(r(8, 18), 1),
+        "post": round(r(8, 40), 1),
+        "bits": round(r(3, 6), 1),
+        "rate": round(r(3500, 11000), 1),
+    }
+    PROFILE.write_text(json.dumps(profile, indent=2))
+    return profile
 
 
 def shelf_low(freq, gain_db, q):
@@ -45,15 +70,18 @@ class Filter:
 
 
 class Boost:
-    def __init__(self):
+    def __init__(self, p):
         self.on = False
         self.env = 0.0
-        self.bass = Filter(shelf_low(180, 15, 0.7))
-        self.harsh = Filter(peaking(3000, 15, 0.7))
+        self.pre = p["pre"]
+        self.drive = p["drive"]
+        self.post = p["post"]
+        self.bass = Filter(shelf_low(p["bass_freq"], p["bass_gain"], 0.7))
+        self.harsh = Filter(peaking(p["harsh_freq"], p["harsh_gain"], 0.7))
         self.hold = 0.0
-        self.phase = 0
-        self.step = RATE // 6000
-        self.levels = 2 ** (4 - 1) - 1
+        self.phase = 0.0
+        self.step = p["rate"] / RATE
+        self.levels = 2 ** (p["bits"] - 1) - 1
 
     def compress(self, x):
         rms = float(np.sqrt(np.mean(x * x))) + 1e-9
@@ -67,20 +95,21 @@ class Boost:
     def crush(self, x):
         y = np.empty_like(x)
         for i in range(len(x)):
-            if self.phase == 0:
+            self.phase += self.step
+            if self.phase >= 1:
+                self.phase -= 1
                 self.hold = x[i]
             y[i] = self.hold
-            self.phase = (self.phase + 1) % self.step
         return np.round(y * self.levels) / self.levels
 
     def process(self, x):
         x = x.astype(np.float64)
         x = self.compress(x)
-        x = np.clip(x * 300, -1, 1)
-        x = np.tanh(x * 3) / math.tanh(3)
+        x = np.clip(x * self.pre, -1, 1)
+        x = np.tanh(x * self.drive) / math.tanh(self.drive)
         x = self.bass(x)
         x = self.harsh(x)
-        x = np.clip(x * 20, -1, 1)
+        x = np.clip(x * self.post, -1, 1)
         x = self.crush(x)
         return np.clip(x, -0.99, 0.99).astype(np.float32)
 
@@ -140,7 +169,7 @@ def main():
 
     inp, out = find_devices(args.input)
     devices = sd.query_devices()
-    boost = Boost()
+    boost = Boost(load_profile())
     boost.on = args.on
     lock = threading.Lock()
 

@@ -7,6 +7,7 @@ CONF="$DIR/mic-boost-chain.conf"
 LOCK="$DIR/mic-lock.target"
 HERE="$(dirname "$(readlink -f "$0")")"
 TEMPLATE="${MIC_BOOST_CHAIN:-$HERE/mic-boost-chain.conf}"
+PROFILE="$HERE/profile"
 NODE=mic_boost
 
 vol() {
@@ -20,6 +21,18 @@ note() {
 
 lock() {
     [ -f "$LOCK" ] && printf '%s' "$1" > "$LOCK"
+}
+
+make_profile() {
+    awk -v seed="$(od -An -N4 -tu4 /dev/urandom)" '
+        function r(a, b) { return a + rand() * (b - a) }
+        BEGIN {
+            srand(seed)
+            printf "PRE=%.1f\nDRIVE=%.2f\n", r(150, 500), r(1.5, 3)
+            printf "BASS_FREQ=%.1f\nBASS_GAIN=%.1f\n", r(110, 320), r(6, 18)
+            printf "HARSH_FREQ=%.1f\nHARSH_GAIN=%.1f\n", r(1500, 4800), r(8, 18)
+            printf "POST=%.1f\nBITS=%.1f\nRATE=%.1f\n", r(8, 40), r(3, 6), r(3500, 11000)
+        }' > "$PROFILE"
 }
 
 has_node() {
@@ -57,7 +70,8 @@ fi
 
 v=$(vol "$src")
 printf '%s %s' "$src" "${v:-100}" > "$STATE"
-sed "s|@SOURCE@|$src|" "$TEMPLATE" > "$CONF"
+[ -f "$PROFILE" ] || make_profile
+sed -e "s|@SOURCE@|$src|" $(grep -E '^[A-Z_]+=[0-9.]+$' "$PROFILE" | sed 's/^\([A-Z_]*\)=\(.*\)$/-e s|@\1@|\2|/') "$TEMPLATE" > "$CONF"
 
 setsid -f sh -c 'echo $$ > "$1"; exec pipewire -c "$2"' _ "$PIDF" "$CONF" >/dev/null 2>&1
 i=0

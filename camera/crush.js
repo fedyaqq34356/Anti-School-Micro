@@ -1,13 +1,12 @@
 (() => {
   const CFG = {
-    width: 96,
-    height: 54,
-    quality: 0.01,
+    width: 32,
+    height: 18,
+    quality: 0.4,
+    blur: 12,
     fps: 3,
     freezeChance: 0.06,
     freezeMs: [700, 3000],
-    noise: 50,
-    dark: 0.7,
   };
 
   let on = false;
@@ -19,21 +18,9 @@
   if (!md || !md.getUserMedia || !window.MediaStreamTrackProcessor || !window.MediaStreamTrackGenerator) return;
   const getUserMedia = md.getUserMedia.bind(md);
 
-  function degrade(ctx) {
-    const img = ctx.getImageData(0, 0, CFG.width, CFG.height);
-    const d = img.data;
-    for (let i = 0; i < d.length; i += 4) {
-      const n = (Math.random() - 0.5) * CFG.noise;
-      d[i] = d[i] * CFG.dark + n;
-      d[i + 1] = d[i + 1] * CFG.dark + n * 1.2;
-      d[i + 2] = d[i + 2] * CFG.dark * 0.8 + n;
-    }
-    ctx.putImageData(img, 0, 0);
-  }
-
   function crush(src) {
     const small = new OffscreenCanvas(CFG.width, CFG.height);
-    const sctx = small.getContext("2d", { willReadFrequently: true });
+    const sctx = small.getContext("2d");
     const big = new OffscreenCanvas(1, 1);
     const bctx = big.getContext("2d");
     let next = 0;
@@ -53,14 +40,14 @@
           const { timestamp, displayWidth: w, displayHeight: h } = frame;
           sctx.drawImage(frame, 0, 0, CFG.width, CFG.height);
           frame.close();
-          degrade(sctx);
           const bmp = await createImageBitmap(await small.convertToBlob({ type: "image/jpeg", quality: CFG.quality }));
           if (big.width !== w || big.height !== h) {
             big.width = w;
             big.height = h;
           }
-          bctx.imageSmoothingEnabled = false;
-          bctx.drawImage(bmp, 0, 0, w, h);
+          bctx.imageSmoothingQuality = "high";
+          bctx.filter = `blur(${CFG.blur * w / 640}px)`;
+          bctx.drawImage(bmp, -w * 0.05, -h * 0.05, w * 1.1, h * 1.1);
           bmp.close();
           ctrl.enqueue(new VideoFrame(big, { timestamp }));
         },
